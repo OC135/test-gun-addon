@@ -1,0 +1,273 @@
+// ==========================
+// GeoFS XYZ座標指定スモーク
+// 3Dモデルに隠れる
+// Lキー長押し中のみ
+// ==========================
+
+(() => {
+
+    console.log("XYZ smoke gun loaded");
+
+    // 前回削除
+    if (window.smokeGunCleanup) {
+        window.smokeGunCleanup();
+    }
+
+    let firing = false;
+    let fireLoop = null;
+
+    const smokeEntities = [];
+
+    const SMOKE_IMAGE =
+        "https://www.geo-fs.com/images/particles/smoke-light.png?kc=1729598422";
+
+    const SOUND_URL =
+        "https://oc135.github.io/test6/gunsound2.mp3";
+
+    // スモークサイズ
+    const WORLD_SIZE = 1.25;
+
+    // ======================
+    // XYZオフセット指定
+    // X = 左右
+    // Y = 前後
+    // Z = 上下
+    // ======================
+
+    const OFFSET_X = -0.092754;
+    const OFFSET_Y = 7.24152;
+    const OFFSET_Z = -0.634077;
+
+    // 音
+    const gunSound = new Audio(SOUND_URL);
+
+    gunSound.loop = true;
+    gunSound.volume = 1.0;
+
+    function createSmoke() {
+
+        if (!window.geofs?.aircraft?.instance) {
+            return;
+        }
+
+        const aircraft =
+            geofs.aircraft.instance;
+
+        // 機体位置
+        const pos =
+            aircraft.llaLocation;
+
+        // 機体角度
+        const htr =
+            aircraft.htr;
+
+        const heading =
+            Cesium.Math.toRadians(htr[0]);
+
+        // ======================
+        // XYZ → 緯度経度変換
+        // ======================
+
+        const forwardLat =
+            Math.cos(heading) *
+            OFFSET_Y *
+            0.00001;
+
+        const forwardLon =
+            Math.sin(heading) *
+            OFFSET_Y *
+            0.00001;
+
+        const sideLat =
+            Math.cos(heading + Math.PI / 2) *
+            OFFSET_X *
+            0.00001;
+
+        const sideLon =
+            Math.sin(heading + Math.PI / 2) *
+            OFFSET_X *
+            0.00001;
+
+        const lat =
+            pos[0] +
+            forwardLat +
+            sideLat;
+
+        const lon =
+            pos[1] +
+            forwardLon +
+            sideLon;
+
+        const alt =
+            pos[2] + OFFSET_Z;
+
+        // ======================
+        // スモーク生成
+        // ======================
+
+        const entity =
+            geofs.api.viewer.entities.add({
+
+                position:
+                    Cesium.Cartesian3.fromDegrees(
+                        lon,
+                        lat,
+                        alt
+                    ),
+
+                billboard: {
+
+                    image: SMOKE_IMAGE,
+
+                    sizeInMeters: true,
+
+                    width: WORLD_SIZE,
+                    height: WORLD_SIZE,
+
+                    scale: 1,
+
+                    scaleByDistance: null,
+                    translucencyByDistance: null,
+                    pixelOffsetScaleByDistance: null,
+
+                    // 3Dモデルに隠れる
+                    disableDepthTestDistance: 0,
+
+                    color:
+                        Cesium.Color.WHITE.withAlpha(1),
+
+                    verticalOrigin:
+                        Cesium.VerticalOrigin.CENTER
+                }
+            });
+
+        smokeEntities.push(entity);
+
+        // 点滅
+        let visible = true;
+
+        const blink = setInterval(() => {
+
+            if (!entity.billboard) {
+                return;
+            }
+
+            visible = !visible;
+
+            entity.billboard.color =
+                visible
+                    ? Cesium.Color.WHITE.withAlpha(1)
+                    : Cesium.Color.WHITE.withAlpha(0);
+
+        }, 40);
+
+        // 自動削除
+        setTimeout(() => {
+
+            clearInterval(blink);
+
+            geofs.api.viewer.entities.remove(
+                entity
+            );
+
+        }, 300);
+    }
+
+    function startFire() {
+
+        if (firing) {
+            return;
+        }
+
+        firing = true;
+
+        gunSound.currentTime = 0;
+
+        gunSound.play().catch(err => {
+
+            console.log(err);
+
+        });
+
+        fireLoop = setInterval(() => {
+
+            requestAnimationFrame(() => {
+
+                createSmoke();
+
+            });
+
+        }, 20);
+    }
+
+    function stopFire() {
+
+        firing = false;
+
+        clearInterval(fireLoop);
+
+        gunSound.pause();
+        gunSound.currentTime = 0;
+    }
+
+    function keyDown(e) {
+
+        if (
+            e.key === "l" ||
+            e.key === "L"
+        ) {
+
+            startFire();
+        }
+    }
+
+    function keyUp(e) {
+
+        if (
+            e.key === "l" ||
+            e.key === "L"
+        ) {
+
+            stopFire();
+        }
+    }
+
+    document.addEventListener(
+        "keydown",
+        keyDown,
+        true
+    );
+
+    document.addEventListener(
+        "keyup",
+        keyUp,
+        true
+    );
+
+    // cleanup
+    window.smokeGunCleanup = () => {
+
+        stopFire();
+
+        document.removeEventListener(
+            "keydown",
+            keyDown,
+            true
+        );
+
+        document.removeEventListener(
+            "keyup",
+            keyUp,
+            true
+        );
+
+        smokeEntities.forEach(entity => {
+
+            geofs.api.viewer.entities.remove(
+                entity
+            );
+
+        });
+    };
+
+})();
